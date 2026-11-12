@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Drop a pin</title>
+<style>
+  :root { --pin: #ff4d4f; --glass: rgba(20, 20, 24, 0.65); --muted: #b8b8c0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #000; overflow: hidden; color: #fff;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+  #cam { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+  #toast { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 16px);
+    margin: 0 auto; max-width: 420px; text-align: center; font-size: 14px; padding: 10px 14px;
+    background: var(--glass); border-radius: 12px; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+
+  #listBtn { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); right: 12px;
+    background: var(--glass); color: #fff; border: 0; border-radius: 999px; padding: 10px 16px;
+    font-size: 14px; cursor: pointer; }
+
+  #bottom { position: fixed; left: 0; right: 0; bottom: 0; padding-bottom: env(safe-area-inset-bottom, 0px);
+    display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 20px; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+    background: linear-gradient(transparent, rgba(0,0,0,.35)); }
+  #hint { font-size: 13px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+
+  #pin { width: 70px; height: 100px; border-radius: 0; border: 0; background: none; padding: 0;
+    display: flex; align-items: center; justify-content: center; touch-action: none; cursor: grab;
+    user-select: none; -webkit-user-select: none;
+    transition: transform .25s ease; }
+  #pin.dragging { transition: none; cursor: grabbing; }
+  #pin svg { width: 70px; height: 100px; pointer-events: none; filter: drop-shadow(0 6px 8px rgba(0,0,0,.45)); }
+
+  #sheet { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-end; justify-content: center; }
+  #sheet.open { display: flex; }
+  #panel { background: #17171b; width: 100%; max-width: 560px; max-height: 80%; border-radius: 18px 18px 0 0;
+    display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  #panelHead { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid #2a2a31; }
+  #panelHead h2 { font-size: 17px; font-weight: 600; }
+  .btn { background: #2a2a31; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+  .btn.danger { background: #4a1d1f; color: #ffb3b5; }
+  #list { overflow-y: auto; padding: 8px 0; }
+  .item { padding: 12px 18px; border-bottom: 1px solid #222228; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .item .meta { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .item .coords { font-size: 15px; color: #fff; font-variant-numeric: tabular-nums; }
+  .item a { color: #7fb8ff; font-size: 13px; text-decoration: none; }
+  .item .info { flex: 1; min-width: 0; }
+  .thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; flex-shrink: 0; background: #222; }
+  .btn.mapBtn { display: inline-block; margin-top: 8px; color: #7fb8ff; text-decoration: none; }
+  .empty { padding: 30px 18px; text-align: center; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<video id="cam" autoplay playsinline muted></video>
+
+<div id="toast"></div>
+<button id="listBtn">Saved (<span id="count">0</span>)</button>
+
+<div id="bottom">
+  <div id="hint">Swipe up on the pin to drop it here</div>
+  <button id="pin" aria-label="Swipe up to drop a pin">
+    <svg viewBox="0 0 60 110" aria-hidden="true">
+      <defs>
+        <radialGradient id="headGrad" cx="38%" cy="32%" r="70%">
+          <stop offset="0" stop-color="#ff6b6b"/>
+          <stop offset=".6" stop-color="#e01e1e"/>
+          <stop offset="1" stop-color="#8f0000"/>
+        </radialGradient>
+        <linearGradient id="needleGrad" x1="0" x2="1">
+          <stop offset="0" stop-color="#9aa0a6"/>
+          <stop offset=".5" stop-color="#e8ecef"/>
+          <stop offset="1" stop-color="#7c838a"/>
+        </linearGradient>
+      </defs>
+      <polygon points="27,50 33,50 32,100 30,110 28,100" fill="url(#needleGrad)"/>
+      <circle cx="30" cy="28" r="26" fill="url(#headGrad)"/>
+      <ellipse cx="22" cy="18" rx="8" ry="5" fill="#fff" opacity=".35" transform="rotate(-25 22 18)"/>
+    </svg>
+  </button>
+</div>
+
+<div id="sheet">
+  <div id="panel">
+    <div id="panelHead">
+      <h2>Saved locations</h2>
+      <div style="display:flex; gap:8px">
+        <button class="btn danger" id="clearAll">Clear all</button>
+        <button class="btn" id="closeSheet">Close</button>
+      </div>
+    </div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+  const KEY = 'dropapin.pins';
+  const SWIPE_MIN = 80; // px the pin must travel upward to drop
+  let pins = [];
+  let stream = null;
+
+  const cam = document.getElementById('cam');
+  const pinEl = document.getElementById('pin');
+  const toastEl = document.getElementById('toast');
+  const hintEl = document.getElementById('hint');
+  const countEl = document.getElementById('count');
+  const sheet = document.getElementById('sheet');
+  const list = document.getElementById('list');
+
+  // ---------- Storage ----------
+  function loadPins() {
+    try { pins = JSON.parse(localStorage.getItem(KEY)) || []; }
+    catch (e) { pins = []; }
+  }
+  function savePins() {
+    try { localStorage.setItem(KEY, JSON.stringify(pins)); return true; }
+    catch (e) { toast('Could not save to local storage'); return false; }
+  }
+
+  // ---------- UI helpers ----------
+  let toastTimer;
+  function toast(msg, ms = 2600) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+  }
+  function updateCount() { countEl.textContent = pins.length; }
+
+  // ---------- Camera ----------
+  async function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('Camera is not supported here. You can still drop pins.', 5000);
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+      cam.srcObject = stream;
+      await cam.play();
+    } catch (e) {
+      toast('Camera unavailable. Allow camera access to see the view. You can still drop pins.', 5000);
+    }
+  }
+
+  // ---------- Swipe-up to drop ----------
+  let startY = null;
+  let activePointer = null;
+
+  pinEl.addEventListener('pointerdown', e => {
+    startY = e.clientY;
+    activePointer = e.pointerId;
+    pinEl.setPointerCapture(e.pointerId);
+    pinEl.classList.add('dragging');
+  });
+
+  pinEl.addEventListener('pointermove', e => {
+    if (startY === null || e.pointerId !== activePointer) return;
+    const dy = Math.min(0, e.clientY - startY); // only upward movement
+    pinEl.style.transform = `translateY(${dy}px)`;
+  });
+
+  function endDrag(e) {
+    if (startY === null || e.pointerId !== activePointer) return;
+    const travelled = startY - e.clientY; // positive = swiped up
+    startY = null;
+    activePointer = null;
+    pinEl.classList.remove('dragging');
+    pinEl.style.transform = '';
+    if (travelled >= SWIPE_MIN) {
+      dropPin();
+    } else if (travelled > 10) {
+      toast('Swipe further up to drop the pin');
+    }
+  }
+  pinEl.addEventListener('pointerup', endDrag);
+  pinEl.addEventListener('pointercancel', endDrag);
+
+  // ---------- Photo ----------
+  function capturePhoto() {
+    if (!cam.videoWidth) return null;
+    const scale = Math.min(1, 640 / cam.videoWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(cam.videoWidth * scale);
+    canvas.height = Math.round(cam.videoHeight * scale);
+    canvas.getContext('2d').drawImage(cam, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.7);
+  }
+
+  // ---------- Drop & save ----------
+  function dropPin() {
+    if (!navigator.geolocation) {
+      toast('Location is not supported on this device');
+      return;
+    }
+    const photo = capturePhoto();
+    toast('Finding your location…', 15000);
+    navigator.geolocation.getCurrentPosition(pos => {
+      const item = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: Math.round(pos.coords.accuracy),
+        savedAt: new Date().toISOString(),
+        photo: photo
+      };
+      pins.unshift(item);
+      if (savePins()) {
+        updateCount();
+        if (navigator.vibrate) navigator.vibrate(40);
+        toast(`Pin dropped at ${item.lat.toFixed(5)}, ${item.lng.toFixed(5)}`);
+      } else {
+        pins.shift();
+      }
+    }, err => {
+      const msgs = {
+        1: 'Location permission denied. Allow location access to drop a pin.',
+        2: 'Could not determine your location. Try again outdoors or with GPS on.',
+        3: 'Timed out getting your location. Try again.'
+      };
+      toast(msgs[err.code] || 'Could not get your location');
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+
+  // ---------- Saved list ----------
+  function renderList() {
+    if (!pins.length) {
+      list.innerHTML = '<div class="empty">No pins yet. Swipe up on the pin to save your first location.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    pins.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'item';
+
+      const info = document.createElement('div');
+      info.className = 'info';
+      const coords = document.createElement('div');
+      coords.className = 'coords';
+      coords.textContent = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = `${new Date(p.savedAt).toLocaleString()} · ±${p.accuracy} m`;
+      const link = document.createElement('a');
+      link.className = 'btn mapBtn';
+      link.href = `https://www.google.com/maps?q=${p.lat},${p.lng}`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = 'Open in Map';
+      info.append(coords, meta, link);
+      if (p.photo) {
+        const img = document.createElement('img');
+        img.src = p.photo;
+        img.alt = 'Pin photo';
+        img.className = 'thumb';
+        row.appendChild(img);
+      }
+
+      const del = document.createElement('button');
+      del.className = 'btn danger';
+      del.textContent = 'Delete';
+      del.addEventListener('click', () => {
+        pins = pins.filter(x => x.id !== p.id);
+        savePins();
+        updateCount();
+        renderList();
+      });
+
+      row.append(info, del);
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById('listBtn').addEventListener('click', () => {
+    renderList();
+    sheet.classList.add('open');
+  });
+  document.getElementById('closeSheet').addEventListener('click', () => sheet.classList.remove('open'));
+  sheet.addEventListener('click', e => { if (e.target === sheet) sheet.classList.remove('open'); });
+  document.getElementById('clearAll').addEventListener('click', () => {
+    if (!pins.length) return;
+    if (confirm('Delete all saved locations?')) {
+      pins = [];
+      savePins();
+      updateCount();
+      renderList();
+    }
+  });
+
+  // ---------- Init ----------
+  loadPins();
+  updateCount();
+  startCamera();
+</script>
+</body>
+</html>
